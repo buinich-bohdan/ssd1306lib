@@ -271,6 +271,188 @@ OLED_err OLED_put_pixel(OLED *oled, uint8_t x, uint8_t y, bool pixel_state)
 }
 
 
+/**************************************************************************/
+/*!
+   @brief   Draw a rounded rectangle with no fill color
+    @param    oled     Display data struct 
+    @param    x_from   Top left corner x coordinate
+    @param    y_from   Top left corner y coordinate
+    @param    x_to     Width in pixels
+    @param    y_to     Height in pixels
+    @param    r        Radius of corner rounding
+    @param    params   Color and fill
+*/
+/**************************************************************************/
+OLED_err OLED_put_roundRect(OLED* oled, uint8_t x_from, uint8_t y_from, uint8_t x_to, uint8_t y_to, uint8_t r, enum OLED_params params)
+{
+
+    if (params > (OLED_BLACK | OLED_FILL))
+        return OLED_EPARAMS;
+    bool pixel_color = (OLED_BLACK & params) != 0;
+    bool is_fill = (OLED_FILL & params) != 0;
+
+    /* Limit coordinates to display bounds */
+    uint8_t size_errors = 0;
+    uint8_t w_max = oled->width - 1;
+    uint8_t h_max = oled->height - 1;
+    if (x_from > w_max) {
+        x_from = w_max;
+        size_errors++;
+    }
+    if (x_to > w_max) {
+        x_to = w_max;
+        size_errors++;
+    }
+    if (y_from > h_max) {
+        y_from = h_max;
+        size_errors++;
+    }
+    if (y_to > h_max) {
+        y_to = h_max;
+        size_errors++;
+    }
+    /* If all coordinates are out of bounds */
+    if (size_errors >= 4)
+        return OLED_EBOUNDS;
+
+    //OLED_WITH_SPINLOCK(oled) {
+    /* Normalize coordinates */
+    /* start_@ indicates coordinates of upper left corner  */
+    /* stop_@ indicates coordinates of bottom right corner */
+    uint8_t start_x = x_from; /* x min */
+    uint8_t start_y = y_from;
+    uint8_t stop_x = x_to; /* x max */
+    uint8_t stop_y = y_to; /* y max */
+
+    if (is_fill) {
+        /* Fill whole area */
+        for (uint8_t x = start_x + r; x <= stop_x + r; x++) {
+            for (uint8_t y = start_y; y <= stop_y + 2 * r; y++) {
+                OLED_put_pixel_(oled, x, y, pixel_color);
+            }
+        }
+        fillCircleHelper(oled, start_x + stop_x - r - 1, start_y + r, r, 1, stop_y - 2 * r - 1, pixel_color);
+        fillCircleHelper(oled, start_x + r, start_y + r, r, 2, stop_y - 2 * r - 1, pixel_color);
+    }
+    else {
+        /* Draw outer frame */
+        for (uint8_t x = start_x; x <= stop_x; x++) {
+            OLED_put_pixel_(oled, x + r, start_y, pixel_color);
+            OLED_put_pixel_(oled, x + r, stop_y + r * 2, pixel_color);
+        }
+        for (uint8_t y = start_y; y <= stop_y; y++) {
+            OLED_put_pixel_(oled, start_x, y + r, pixel_color);
+            OLED_put_pixel_(oled, stop_x + 2 * r, y + r, pixel_color);
+        }
+
+        drawCircleHelper(oled, x_from + r, start_y + r, r, 1, pixel_color);
+        drawCircleHelper(oled, start_x + stop_x - r - 1, start_y + r, r, 2, pixel_color);
+        drawCircleHelper(oled, start_x + stop_x - r - 1, start_y + stop_y - r - 1, r, 4, pixel_color);
+        drawCircleHelper(oled, start_x + r, start_y + stop_y - r - 1, r, 8, pixel_color);
+    }
+
+    return OLED_EOK;
+}
+/**************************************************************************/
+/*!
+   @brief    Quarter-circle drawer, used to do circles and roundrects
+    @param    oled     		 Display data struct
+    @param    x0  			 Center-point x coordinate
+    @param    y0   			 Center-point y coordinate
+    @param    r   			 Radius of circle
+    @param    cornername  	 Mask bit #1 or bit #2 to indicate which quarters of the circle we're doing
+    @param    params         Color and fill
+*/
+/**************************************************************************/
+OLED_err drawCircleHelper(OLED* oled, int16_t x0, int16_t y0, int16_t r, uint8_t cornername, enum OLED_params params)
+{
+
+    if (params > (OLED_BLACK | OLED_FILL))
+        return OLED_EPARAMS;
+    bool pixel_color = (OLED_BLACK & params) != 0;
+
+    int16_t f = 1 - r;
+    int16_t ddF_x = 1;
+    int16_t ddF_y = -2 * r;
+    int16_t x = 0;
+    int16_t y = r;
+
+    while (x < y) {
+        if (f >= 0) {
+            y--;
+            ddF_y += 2;
+            f += ddF_y;
+        }
+        x++;
+        ddF_x += 2;
+        f += ddF_x;
+        if (cornername & 0x4) {
+            OLED_put_pixel_(oled, x0 + x, y0 + y, pixel_color);
+            OLED_put_pixel_(oled, x0 + y, y0 + x, pixel_color);
+        }
+        if (cornername & 0x2) {
+            OLED_put_pixel_(oled, x0 + x, y0 - y, pixel_color);
+            OLED_put_pixel_(oled, x0 + y, y0 - x, pixel_color);
+        }
+        if (cornername & 0x8) {
+            OLED_put_pixel_(oled, x0 - y, y0 + x, pixel_color);
+            OLED_put_pixel_(oled, x0 - x, y0 + y, pixel_color);
+        }
+        if (cornername & 0x1) {
+            OLED_put_pixel_(oled, x0 - y, y0 - x, pixel_color);
+            OLED_put_pixel_(oled, x0 - x, y0 - y, pixel_color);
+        }
+    }
+    return OLED_EOK;
+}
+/**************************************************************************/
+/*!
+   @brief    Quarter-circle drawer with fill, used to do circles and roundrects
+    @param    oled          Display data struct
+    @param    x0   			Center-point x coordinate
+    @param    y0  		    Center-point y coordinate
+    @param    r   			Radius of circle
+    @param    cornername  	Mask bit #1 or bit #2 to indicate which quarters of the circle we're doing
+    @param    delta  		Offset from center-point, used for round-rects
+    @param    params  		Color and fill
+*/
+/**************************************************************************/
+OLED_err fillCircleHelper(OLED* oled, int16_t x0, int16_t y0, int16_t r, uint8_t cornername, int16_t delta, enum OLED_params params)
+{
+
+    if (params > (OLED_BLACK | OLED_FILL))
+        return OLED_EPARAMS;
+    bool pixel_color = (OLED_BLACK & params) != 0;
+
+    int16_t f = 1 - r;
+    int16_t ddF_x = 1;
+    int16_t ddF_y = -2 * r;
+    int16_t x = 0;
+    int16_t y = r;
+
+    while (x < y) {
+        if (f >= 0) {
+            y--;
+            ddF_y += 2;
+            f += ddF_y;
+        }
+        x++;
+        ddF_x += 2;
+        f += ddF_x;
+
+        if (cornername & 0x1) {
+            OLED_put_line(oled, x0 + x, y0 - y, x0 + x, y0 - y + (2 * y + 1 + delta) - 1, OLED_FILL | params);
+            OLED_put_line(oled, x0 + y, y0 - x, x0 + y, y0 - x + (2 * x + 1 + delta) - 1, OLED_FILL | params);
+        }
+        if (cornername & 0x2) {
+            OLED_put_line(oled, x0 - x, y0 - y, x0 - x, y0 - y + (2 * y + 1 + delta) - 1, OLED_FILL | params);
+            OLED_put_line(oled, x0 - y, y0 - x, x0 - y, y0 - x + (2 * x + 1 + delta) - 1, OLED_FILL | params);
+        }
+    }
+    return OLED_EOK;
+}
+
+
 OLED_err OLED_put_rectangle(OLED *oled, uint8_t x_from, uint8_t y_from, uint8_t x_to, uint8_t y_to, enum OLED_params params)
 {
 	if (params > (OLED_BLACK | OLED_FILL))

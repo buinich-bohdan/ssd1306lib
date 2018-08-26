@@ -276,3 +276,7 @@ OLED_err OLED_put_pixel(OLED *oled, uint8_t x, uint8_t y, bool pixel_state);
  * (!) Notice: method is not atomic. If required, protect it with lock
  */
 OLED_err OLED_put_rectangle(OLED *oled, uint8_t x_from, uint8_t y_from, uint8_t x_to, uint8_t y_to, enum OLED_params params);
+
+OLED_err OLED_put_roundRect(OLED *oled, uint8_t x_from, uint8_t y_from, uint8_t x_to, uint8_t y_to, uint8_t r, enum OLED_params params);
+OLED_err fillCircleHelper(OLED *oled, int16_t x0, int16_t y0, int16_t r,uint8_t cornername, int16_t delta, enum OLED_params params);
+OLED_err drawCircleHelper(OLED *oled, int16_t x0, int16_t y0, int16_t r, uint8_t cornername, enum OLED_params params);
